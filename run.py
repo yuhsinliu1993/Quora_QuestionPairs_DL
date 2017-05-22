@@ -18,7 +18,7 @@ from input_handler import get_input_from_csv
 from models import EmbeddingLayer, BiRNN_EncodingLayer, AttentionLayer, SoftAlignmentLayer, ComparisonLayer, AggregationLayer
 
 from keras.layers import Input
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint
 
@@ -27,7 +27,7 @@ tf.logging.set_verbosity(tf.logging.INFO)
 FLAGS = None
 
 
-def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob):
+def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob, load_pretrained_model=False):
     """
     1. Get embedded vectors
     2. Attention
@@ -62,7 +62,11 @@ def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob)
     scores = AggregationLayer(hidden_unit, n_classes)(comp_1, comp_2)
 
     model = Model(input=[a, b], output=[scores])
-    model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+
+    if load_pretrained_model:
+        model = load_model(FLAGS.load_weights, compile=True)
+    else:
+        model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     return model
 
@@ -90,18 +94,6 @@ def train(input_file, batch_size, n_epochs):
     q1_train, q2_train = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
-    # # Shuffle data && Split data into train / dev set
-    # np.random.seed(FLAGS.seed)
-    # shuffle_indices = np.random.permutation(np.arange(training_size))
-    # q1_ids_shuffled = q1_ids[shuffle_indices]
-    # q2_ids_shuffled = q2_ids[shuffle_indices]
-    # labels_shuffled = labels[shuffle_indices]
-
-    # slice = int(training_size * 0.25)  # 1/4 for dev
-    # q1_train, q1_dev = q1_ids_shuffled[:-slice], q1_ids_shuffled[-slice:]
-    # q2_train, q2_dev = q2_ids_shuffled[:-slice], q2_ids_shuffled[-slice:]
-    # labels_train, labels_dev = labels_shuffled[:-slice], labels_shuffled[-slice:]
-
     # Stage 5: Training
     filepath = "./checkpoints/weights-{epoch:02d}-{val_acc:.2f}.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
@@ -119,8 +111,10 @@ def train(input_file, batch_size, n_epochs):
 
 
 def run(_):
+    load_pretrained_model = True if FLAGS.load_weights is not None else False
+
     if FLAGS.mode == 'train':
-        train(FLAGS.input_data, FLAGS.batch_size, FLAGS.num_epochs)
+        train(FLAGS.input_data, FLAGS.batch_size, FLAGS.num_epochs, load_pretrained_model=load_pretrained_model)
     elif FLAGS.mode == 'eval':
         do_eval(FLAGS.test_data)
     else:
@@ -229,6 +223,11 @@ if __name__ == '__main__':
         action='store_true',
         help='Verbose on training',
         default=False
+    )
+    parser.add_argument(
+        '--load_weights',
+        type=str,
+        help='Locate the path of the model',
     )
 
     FLAGS, unparsed = parser.parse_known_args()
