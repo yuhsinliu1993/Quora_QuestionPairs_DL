@@ -1,9 +1,23 @@
 # Kaggle Competition: Quora Question Pairs Problem
 
-Code is based on the paper "A decomposable attention model for natural language inference" proposed by aparikh, oscart, dipanjand, uszkoreit (Google)
+Reference
+---------
 
-See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
+1. Code is based on the paper "A decomposable attention model for natural language inference (2016)" proposed by Aparikh, Oscart, Dipanjand, Uszkoreit. See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
 
+2. "Reasoning about entailment with neural attention (2016)" proposed by Tim Rockta schel. See more detail on [https://arxiv.org/abs/1509.06664](https://arxiv.org/abs/1509.06664)
+
+3. "Neural Machine Translation by Jointly Learning to Align and Translate (2016)" proposed by Yoshua Bengio, Dzmitry Bahdanau, KyungHyun Cho. See more detail on [https://arxiv.org/abs/1409.0473](https://arxiv.org/abs/1409.0473)
+
+
+Prerequisites
+-------------
+
+- python 2.7
+- numpy
+- [Tensorflow](https://www.tensorflow.org/)
+- [Keras](https://github.com/fchollet/keras) (need to install from source, not from pip)
+- [spaCy](https://spacy.io)
 
 
 Usage
