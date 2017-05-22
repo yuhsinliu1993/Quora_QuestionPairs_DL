@@ -17,15 +17,6 @@ from keras.layers.pooling import GlobalAveragePooling1D, GlobalMaxPooling1D
 
 
 class EmbeddingLayer(object):
-    """
-    ARGUMENTS:
-        vectors[0]: vocab size + unkown(100) + start(1) + eos(1)
-        vectors[1]: embedding size
-        max_length: max length of input sequences
-        output_units:
-        nr_tune:
-        dropout:
-    """
 
     def __init__(self, vocab_size, embedding_size, max_length, output_units, init_weights=None, nr_tune=1000, dropout=0.0):
         self.output_units = output_units

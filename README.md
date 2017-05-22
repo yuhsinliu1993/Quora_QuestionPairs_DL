@@ -5,7 +5,20 @@ Code is based on the paper "A decomposable attention model for natural language 
 See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
 
 
-## Usage ##
+
+Usage
+-----
+
+To train a model on default settings: (epochs: 10, embedding size: 128, hidden units: 100, learning rate: 0.001, input data: ./data/train.csv)
+
+    $ python run.py --mode=train --verbose
+
+To test a model:
+
+    $ python run.py --mode=eval
+
+
+All training option:
 ```
 usage: run.py [-h] [--num_epochs NUM_EPOCHS] [--batch_size BATCH_SIZE]
               [--embedding_size EMBEDDING_SIZE] [--max_length MAX_LENGTH]
