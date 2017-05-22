@@ -1,6 +1,8 @@
 # Kaggle Competition: Quora Question Pairs Problem
-	Code is based on the paper "A decomposable attention model for natural language inference" proposed by aparikh, oscart, dipanjand, uszkoreit (Google)
-	See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
+
+Code is based on the paper "A decomposable attention model for natural language inference" proposed by aparikh, oscart, dipanjand, uszkoreit (Google)
+
+See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
 
 
 ## Usage ##
