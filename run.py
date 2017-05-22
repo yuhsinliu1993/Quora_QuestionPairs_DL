@@ -20,6 +20,7 @@ from models import EmbeddingLayer, BiRNN_EncodingLayer, AttentionLayer, SoftAlig
 from keras.layers import Input
 from keras.models import Model
 from keras.optimizers import Adam
+from keras.callbacks import ModelCheckpoint
 
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -102,12 +103,16 @@ def train(input_file, batch_size, n_epochs):
     # labels_train, labels_dev = labels_shuffled[:-slice], labels_shuffled[-slice:]
 
     # Stage 5: Training
+    filepath = "./checkpoints/weights-{epoch:02d}-{val_acc:.2f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+    callbacks_list = [checkpoint]
     model.fit(
         x=[q1_train, q2_train],
         y=labels,
         batch_size=batch_size,
         epochs=n_epochs,
-        # validation_data=([q1_dev, q2_dev], labels_dev),
+        validation_split=0.33,
+        callbacks=callbacks_list,
         shuffle=True,
         verbose=FLAGS.verbose
     )
