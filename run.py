@@ -144,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--embedding_size',
         type=int,
-        default=128,
+        default=300,
         help='Specify embedding size'
     )
     parser.add_argument(
