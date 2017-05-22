@@ -19,7 +19,7 @@ Prerequisites
 - [Keras](https://github.com/fchollet/keras) (need to install from source, not from pip)
 - [spaCy](https://spacy.io)
 
-- Download spaCy pre-trained word2vec: Glove
+  Download spaCy pre-trained word2vec: Glove
 
     $ python -m spacy download en
 
