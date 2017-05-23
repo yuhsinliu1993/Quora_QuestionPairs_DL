@@ -10,6 +10,7 @@ import numpy as np
 import spacy
 import tensorflow as tf
 import sys
+import os
 import argparse
 
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
@@ -62,20 +63,44 @@ def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob,
     scores = AggregationLayer(hidden_unit, n_classes)(comp_1, comp_2)
 
     model = Model(input=[a, b], output=[scores])
+    model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     if load_pretrained_model:
-        model = load_model(FLAGS.load_weights, compile=True)
-    else:
-        model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+        if FLAGS.load_model is None:
+            raise ValueError("You need to specify the model location by --load_model=[location]")
+        model.load_weights(FLAGS.load_model)
 
     return model
 
 
-def do_eval(test_data):
+def do_predict(X=None):
     pass
 
 
-def train(input_file, batch_size, n_epochs):
+def do_eval(test_data):
+    if FLAGS.load_model is None:
+        raise ValueError("You need to specify the model location by --load_model=[location]")
+
+    # Load Testing Data
+    question_1, question_2, labels = get_input_from_csv(test_data)
+
+    # Load Pre-trained Model
+    if FLAGS.best_glove:
+        import en_core_web_md
+        nlp = en_core_web_md.load()  # load best-matching version for Glove
+    else:
+        nlp = spacy.load('en')
+    embedding_matrix = load_glove_embeddings(nlp.vocab, n_unknown=FLAGS.num_unknown)  # shape=(1071074, 300)
+    model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=True)
+
+    # Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
+    q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
+    labels = to_categorical(np.asarray(labels, dtype='int32'))
+
+    model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
+
+
+def train(input_file, batch_size, n_epochs, save_dir=None):
     # Stage 1: Read training data (csv)
     question_1, question_2, labels = get_input_from_csv(input_file)
 
@@ -88,35 +113,36 @@ def train(input_file, batch_size, n_epochs):
     embedding_matrix = load_glove_embeddings(nlp.vocab, n_unknown=FLAGS.num_unknown)  # shape=(1071074, 300)
 
     # Stage 3: Build Model
-    model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob)
+    load_pretrained_model = True if FLAGS.load_model is not None else False
+    model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=load_pretrained_model)
 
     # Stage 4: Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
     q1_train, q2_train = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
     # Stage 5: Training
-    filepath = "./checkpoints/weights-{epoch:02d}-{val_acc:.2f}.hdf5"
+    save_dir = save_dir if save_dir is not None else 'checkpoints'
+    filepath = os.path.join(save_dir, "weights-{epoch:02d}-{val_acc:.2f}.hdf5")
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
-    callbacks_list = [checkpoint]
     model.fit(
         x=[q1_train, q2_train],
         y=labels,
         batch_size=batch_size,
         epochs=n_epochs,
         validation_split=0.33,
-        callbacks=callbacks_list,
+        callbacks=[checkpoint],
         shuffle=True,
         verbose=FLAGS.verbose
     )
 
 
 def run(_):
-    load_pretrained_model = True if FLAGS.load_weights is not None else False
-
     if FLAGS.mode == 'train':
-        train(FLAGS.input_data, FLAGS.batch_size, FLAGS.num_epochs, load_pretrained_model=load_pretrained_model)
+        train(FLAGS.input_data, FLAGS.batch_size, FLAGS.num_epochs)
     elif FLAGS.mode == 'eval':
         do_eval(FLAGS.test_data)
+    elif FLAGS.mode == 'predict':
+        do_predict()
     else:
         pass
 
@@ -198,7 +224,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--mode',
         type=str,
-        help='Specify mode: train or eval',
+        help='Specify mode: train or eval or predict',
         required=True
     )
     parser.add_argument(
@@ -225,7 +251,7 @@ if __name__ == '__main__':
         default=False
     )
     parser.add_argument(
-        '--load_weights',
+        '--load_model',
         type=str,
         help='Locate the path of the model',
     )
