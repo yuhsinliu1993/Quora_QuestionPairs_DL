@@ -18,7 +18,7 @@ Prerequisites
 - python 2.7
 - numpy
 - [Tensorflow](https://www.tensorflow.org/)
-- [Keras](https://github.com/fchollet/keras) (need to install from source, not from pip)
+- [Keras](https://github.com/fchollet/keras)
 - [spaCy](https://spacy.io)
 
 Download spaCy pre-trained word2vec (Glove)
