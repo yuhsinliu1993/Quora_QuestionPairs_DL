@@ -1,5 +1,7 @@
 # Kaggle Competition: Quora Question Pairs Problem
 
+See more infomation on [https://www.kaggle.com/c/quora-question-pairs](https://www.kaggle.com/c/quora-question-pairs)
+
 Reference
 ---------
 
@@ -19,11 +21,13 @@ Prerequisites
 - [Keras](https://github.com/fchollet/keras) (need to install from source, not from pip)
 - [spaCy](https://spacy.io)
 
-Download spaCy pre-trained word2vec: Glove
+Download spaCy pre-trained word2vec (Glove)
 
+    # out-of-the-box: download best-matching default model
     $ python -m spacy download en
 
-    $ python -m spacy download en_core_web_md --direct
+    # download best-matching version of specific model for your spaCy installation
+    $ python -m spacy download en_core_web_md
 
 
 Usage

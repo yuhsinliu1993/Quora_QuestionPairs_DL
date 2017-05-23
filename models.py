@@ -1,17 +1,10 @@
-"""
-    Based on the paper "A decomposable attention model for natural language inference"
-    See more detail on https://arxiv.org/abs/1606.01933
-"""
-
 import keras.backend as K
 from keras.layers import Dense, merge
 from keras.layers import Lambda, Activation, Dropout, Embedding, TimeDistributed, SpatialDropout1D
 from keras.layers import Bidirectional, GRU, LSTM
-from keras.layers.noise import GaussianNoise
 from keras.layers.advanced_activations import ELU
-from keras.models import Sequential, Model, model_from_json
+from keras.models import Sequential
 from keras.regularizers import l2
-from keras.optimizers import Adam
 from keras.layers.normalization import BatchNormalization
 from keras.layers.pooling import GlobalAveragePooling1D, GlobalMaxPooling1D
 
@@ -116,8 +109,8 @@ class SoftAlignmentLayer(object):
     def __call__(self, sentence, attention, transpose=False):
 
         def _normalize_attention(attention_and_sent):
-            attention = attention_and_sent[0]  # attention matrix   shape=(?, max_length, max_length)
-            sentence = attention_and_sent[1]  # sentence that wants to be aligned   shape=(?, max_length, embedding_size)
+            attention = attention_and_sent[0]   # attention matrix   shape=(?, max_length, max_length)
+            sentence = attention_and_sent[1]    # sentence that wants to be aligned   shape=(?, max_length, embedding_size)
 
             if transpose:
                 attention = K.permute_dimensions(attention, (0, 2, 1))
@@ -126,9 +119,9 @@ class SoftAlignmentLayer(object):
             exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
             summation = K.sum(exp, axis=-1, keepdims=True)
             weights = exp / summation  # (512, 512)
-            subphrase_in_sentence = K.batch_dot(weights, sentence)
+            sub_phrase_in_sentence = K.batch_dot(weights, sentence)
 
-            return subphrase_in_sentence
+            return sub_phrase_in_sentence
 
         return merge([attention, sentence],
                      mode=_normalize_attention,
@@ -183,5 +176,4 @@ class AggregationLayer(object):
         self.model.add(Dense(output_units, name='entail_out', activation='softmax', W_regularizer=l2(L2), init='zero'))
 
     def __call__(self, feats1, feats2):
-        predictions = self.model(merge([feats1, feats2], mode='concat'))
-        return predictions
+        return self.model(merge([feats1, feats2], mode='concat'))
