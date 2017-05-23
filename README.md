@@ -42,7 +42,7 @@ To test a model:
     $ python run.py --mode=eval
 
 
-All training option:
+All options:
 ```
 usage: run.py [-h] [--num_epochs NUM_EPOCHS] [--batch_size BATCH_SIZE]
               [--embedding_size EMBEDDING_SIZE] [--max_length MAX_LENGTH]
