@@ -1,11 +1,3 @@
-"""
-    For Training:
-        python run.py --mode=train --verbose
-
-    For Evaluating:
-        python eval.py --mode=eval
-"""
-
 import numpy as np
 import spacy
 import tensorflow as tf
@@ -13,13 +5,13 @@ import sys
 import os
 import argparse
 
-from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
+from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids, get_cleaned_text
 from input_handler import get_input_from_csv
 
 from models import EmbeddingLayer, BiRNN_EncodingLayer, AttentionLayer, SoftAlignmentLayer, ComparisonLayer, AggregationLayer
 
 from keras.layers import Input
-from keras.models import Model, load_model
+from keras.models import Model
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint
 
@@ -97,12 +89,16 @@ def do_eval(test_data):
     q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
-    model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
+    accuracy = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
+
+    print("[*] ACCURACY TEST DATA: %.4f" % accuracy)
 
 
 def train(input_file, batch_size, n_epochs, save_dir=None):
-    # Stage 1: Read training data (csv)
+    # Stage 1: Read training data (csv) && Preprocessing them
     question_1, question_2, labels = get_input_from_csv(input_file)
+    question_1 = get_cleaned_text(question_1)
+    question_2 = get_cleaned_text(question_2)
 
     # Stage 2: Load Pre-trained embedding matrix (Using GLOVE here)
     if FLAGS.best_glove:

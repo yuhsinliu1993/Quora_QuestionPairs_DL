@@ -10,10 +10,6 @@ def get_cleaned_text(text):
     return text
 
 
-def get_vectorized_text(text):
-    return text
-
-
 def load_glove_embeddings(vocab, n_unknown=100):
     if not isinstance(vocab, spacy.vocab.Vocab):
         raise TypeError("The input `vocab` must be type of 'spacy.vocab.Vocab', not %s." % type(vocab))
