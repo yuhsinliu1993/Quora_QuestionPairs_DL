@@ -54,7 +54,7 @@ def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob,
 
     scores = AggregationLayer(hidden_unit, n_classes)(comp_1, comp_2)
 
-    model = Model(input=[a, b], output=[scores])
+    model = Model(inputs=[a, b], outputs=[scores])
     model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     if load_pretrained_model:
@@ -90,8 +90,7 @@ def do_eval(test_data):
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
     accuracy = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
-
-    print("[*] ACCURACY TEST DATA: %.4f" % accuracy)
+    # print("[*] ACCURACY OF TEST DATA: %.4f" % accuracy)
 
 
 def train(input_file, batch_size, n_epochs, save_dir=None):

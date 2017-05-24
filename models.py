@@ -1,10 +1,10 @@
 import keras.backend as K
-from keras.layers import Dense, merge
-from keras.layers import Lambda, Activation, Dropout, Embedding, TimeDistributed, SpatialDropout1D
+from keras.layers import Lambda, Activation, Dropout, Embedding, SpatialDropout1D, Dense, merge
+from keras.layers import TimeDistributed  # This applies the model to every timestep in the input sequences
 from keras.layers import Bidirectional, GRU, LSTM
 from keras.layers.advanced_activations import ELU
 from keras.models import Sequential
-from keras.regularizers import l2
+from keras import regularizers
 from keras.layers.normalization import BatchNormalization
 from keras.layers.pooling import GlobalAveragePooling1D, GlobalMaxPooling1D
 
@@ -14,6 +14,7 @@ class EmbeddingLayer(object):
     def __init__(self, vocab_size, embedding_size, max_length, output_units, init_weights=None, nr_tune=1000, dropout=0.0):
         self.output_units = output_units
         self.max_length = max_length
+        self.dropout = dropout
 
         self.embed = Embedding(
             vocab_size,
@@ -21,7 +22,8 @@ class EmbeddingLayer(object):
             input_length=max_length,
             weights=[init_weights],
             name='embedding',
-            trainable=False)
+            trainable=False
+        )
 
         self.tune = Embedding(
             nr_tune,
@@ -30,12 +32,11 @@ class EmbeddingLayer(object):
             weights=None,
             name='tune',
             trainable=True,
-            dropout=dropout)
+        )
 
-        self.mod_ids = Lambda(lambda sent: sent % (nr_tune - 1) + 1,
-                              output_shape=(self.max_length,))
+        self.mod_ids = Lambda(lambda sent: sent % (nr_tune - 1) + 1, output_shape=(self.max_length,))
 
-        self.project = TimeDistributed(Dense(output_units, activation=None, bias=False, name='project'))
+        self.project = TimeDistributed(Dense(output_units, use_bias=False, name='project'))
 
     def __call__(self, sentence):
 
@@ -45,12 +46,16 @@ class EmbeddingLayer(object):
             return shapes[0]
 
         mod_sent = self.mod_ids(sentence)
-        tuning = self.tune(mod_sent)
+
+        # SpatialDropout1D drops entire 1D feature maps instead of individual elements
+        tuning = SpatialDropout1D(self.dropout)(self.tune(mod_sent))
+
         # tuning = merge([tuning, mod_sent],
         #    mode=lambda AB: AB[0] * (K.clip(K.cast(AB[1], 'float32'), 0, 1)),
         #    output_shape=(self.max_length, self.output_units))
         pretrained = self.project(self.embed(sentence))
         vectors = merge([pretrained, tuning], mode='sum')
+
         return vectors
 
 
@@ -58,8 +63,8 @@ class BiRNN_EncodingLayer(object):
 
     def __init__(self, max_length, hidden_units, dropout=0.0):
         self.model = Sequential()
-        self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout_W=dropout, dropout_U=dropout), input_shape=(max_length, hidden_units)))
-        self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', init='he_normal')))
+        self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout=dropout, recurrent_dropout=dropout), input_shape=(max_length, hidden_units)))  # return_sequences: return the last output in the output sequence, or the full sequence.
+        self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', kernel_initializer='he_normal')))
         self.model.add(TimeDistributed(Dropout(0.2)))
 
     def __call__(self, embedded_words):
@@ -68,24 +73,18 @@ class BiRNN_EncodingLayer(object):
 
 class AttentionLayer(object):
 
-    def __init__(self, max_length, hidden_units, dropout=0.0, L2=0.0, activation='relu'):
+    def __init__(self, max_length, hidden_units, dropout=0.0, l2_weight_decay=0.0, activation='relu'):
         self.max_length = max_length
-        self.model = Sequential()
 
         """
         F function => attention = transpose of F(a) * F(b)
         """
+        self.model = Sequential()
         self.model.add(Dropout(dropout, input_shape=(hidden_units,)))
-        self.model.add(Dense(hidden_units,
-                             name='attend1',
-                             init='he_normal',
-                             W_regularizer=l2(L2),
-                             input_shape=(hidden_units,),
-                             activation='relu'))
+        self.model.add(Dense(hidden_units, activation='relu', kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='attend1'))
         self.model.add(Dropout(dropout))
-        self.model.add(Dense(hidden_units, name='attend2',
-                             init='he_normal', W_regularizer=l2(L2), activation='relu'))
-        self.model = TimeDistributed(self.model)
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), activation='relu', name='attend2'))
+        self.model = TimeDistributed(self.model)  # Apply attention for each timestep
 
     def __call__(self, sent1, sent2):
         def _outer(AB):
@@ -133,24 +132,21 @@ class ComparisonLayer(object):
     Separately compare the aligned phrases using a function "G"
     """
 
-    def __init__(self, words, hidden_units, L2=0.0, dropout=0.0):
+    def __init__(self, words, hidden_units, l2_weight_decay=0.0, dropout=0.0):
         self.words = words
 
         self.model = Sequential()
-        self.model.add(Dropout(dropout, input_shape=(hidden_units * 2,)))  # 2: for sentence and
-        self.model.add(Dense(hidden_units, name='compare1', init='he_normal', W_regularizer=l2(L2)))
+        self.model.add(Dropout(dropout, input_shape=(hidden_units * 2,)))
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='compare1'))
         self.model.add(Activation('relu'))
         self.model.add(Dropout(dropout))
-        self.model.add(Dense(hidden_units, name='compare2', init='he_normal', W_regularizer=l2(L2)))
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='compare2'))
         self.model.add(Activation('relu'))
-        self.model = TimeDistributed(self.model)
+        self.model = TimeDistributed(self.model)  # Apply comparison for each timestep
 
     def __call__(self, sent, align, **kwargs):
         result = self.model(merge([sent, align], mode='concat'))  # Shape: (batch, max_length, 2 * hidden_units)
-
-        # avged = GlobalAveragePooling1D()(result, mask=self.words)
         avged = GlobalAveragePooling1D()(result)
-        # maxed = GlobalMaxPooling1D()(result, mask=self.words)
         maxed = GlobalMaxPooling1D()(result)
         merged = merge([avged, maxed], mode='sum')
         result = BatchNormalization()(merged)
@@ -164,16 +160,18 @@ class AggregationLayer(object):
     y = H([v1, v2])
     """
 
-    def __init__(self, hidden_units, output_units, dropout=0.0, L2=0.0):
+    def __init__(self, hidden_units, output_units, dropout=0.0, l2_weight_decay=0.0):
         # Define H function
         self.model = Sequential()
         self.model.add(Dropout(dropout, input_shape=(hidden_units * 2,)))
-        self.model.add(Dense(hidden_units, name='entail_1', init='he_normal', W_regularizer=l2(L2)))
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay)))
         self.model.add(Activation('relu'))
+
         self.model.add(Dropout(dropout))
-        self.model.add(Dense(hidden_units, name='entail_2', init='he_normal', W_regularizer=l2(L2)))
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay)))
         self.model.add(Activation('relu'))
-        self.model.add(Dense(output_units, name='entail_out', activation='softmax', W_regularizer=l2(L2), init='zero'))
+
+        self.model.add(Dense(output_units, activation='softmax', kernel_initializer='zero', kernel_regularizer=regularizers.l2(l2_weight_decay)))
 
     def __call__(self, feats1, feats2):
         return self.model(merge([feats1, feats2], mode='concat'))
