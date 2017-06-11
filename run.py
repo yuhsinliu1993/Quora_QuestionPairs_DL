@@ -8,7 +8,7 @@ import argparse
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids, get_cleaned_text
 from input_handler import get_input_from_csv
 
-from models import EmbeddingLayer, BiLSTM_Layer, SoftAlignmentLayer, ComparisonLayer, AggregationLayer
+from models import EmbeddingLayer, BiLSTM_Layer, SoftAlignmentLayer, Enhancement_Layer, Composition_Layer, Pooling_Layer
 
 from keras.layers import Input
 from keras.models import Model
@@ -39,19 +39,26 @@ def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob,
     encoded_b = BiLSTM_Layer(max_length, hidden_unit)(embedded_b)
 
     # ------- Soft-Alignment Layer -------
-    # Modeling local inference needs to employ some forms of hard or soft align- ment to associate the relevant
+    # Modeling local inference needs to employ some forms of hard or soft alignment to associate the relevant
     # sub-components between a premise and a hypothesis
     # Using inter-sentence “alignment” (or attention) to softly align each word to the content of hypothesis (or premise)
     align_alpha, align_beta = SoftAlignmentLayer(max_length)(encoded_a, encoded_b)
 
-    # ------- Comparison Layer -------
-    comp_layer = ComparisonLayer(max_length, hidden_unit, dropout=dropout_rate)
-    comp_1 = comp_layer(embedded_a, align_beta)
-    comp_2 = comp_layer(embedded_b, align_alpha)
+    # ------- Enhancement Layer -------
+    # Compute the difference and the element-wise product for the tuple < encoded_a, align_a > and < encoded_b, align_b >
+    # This operation could help sharpen local inference information between elements in the tuples and capture
+    # inference relationships such as contradiction.
+    enhanced_a = Enhancement_Layer()(encoded_a, align_alpha)
+    enhanced_b = Enhancement_Layer()(encoded_b, align_beta)
 
-    scores = AggregationLayer(hidden_unit, n_classes)(comp_1, comp_2)
+    # ------- Composition Layer -------
+    comp_a = Composition_Layer(hidden_unit, max_length)(enhanced_a)
+    comp_b = Composition_Layer(hidden_unit, max_length)(enhanced_b)
 
-    model = Model(inputs=[a, b], outputs=[scores])
+    # ------- Pooling Layer -------
+    preds = Pooling_Layer(hidden_unit, n_classes, dropout=0.2, l2_weight_decay=1e-4)(comp_a, comp_b)
+
+    model = Model(inputs=[a, b], outputs=[preds])
     model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     if load_pretrained_model:
@@ -204,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--learning_rate',
         type=float,
-        default=1e-4,
+        default=4e-4,
         help='Specify dropout rate'
     )
     parser.add_argument(

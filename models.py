@@ -11,7 +11,7 @@ from keras.layers.pooling import GlobalAveragePooling1D, GlobalMaxPooling1D
 
 class EmbeddingLayer(object):
 
-    def __init__(self, vocab_size, embedding_size, max_length, output_units, init_weights=None, nr_tune=1000, dropout=0.0):
+    def __init__(self, vocab_size, embedding_size, max_length, output_units, init_weights=None, nr_tune=1000, dropout=0.5):
         self.output_units = output_units
         self.max_length = max_length
         self.dropout = dropout
@@ -53,11 +53,11 @@ class BiLSTM_Layer(object):
     Encode the embedded words by using BiLSTM
     """
 
-    def __init__(self, max_length, hidden_units, dropout=0.0):
+    def __init__(self, max_length, hidden_units, dropout=0.5):
         self.model = Sequential()
         self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout=dropout, recurrent_dropout=dropout), input_shape=(max_length, hidden_units)))  # return_sequences: return the last output in the output sequence, or the full sequence.
         self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', kernel_initializer='he_normal')))
-        self.model.add(TimeDistributed(Dropout(0.2)))
+        self.model.add(TimeDistributed(Dropout(dropout)))
 
     def __call__(self, embedded_words):
         return self.model(embedded_words)
@@ -78,7 +78,6 @@ class SoftAlignmentLayer(object):
 
     def _get_attend(self, encoded_a, encoded_b):
         """
-        Compute the attention weights as the similarity of a hidden state tuple <a ̄i, b ̄j> between a premise and a hypothesis
         INPUTS:
             encoded_a    shape=(batch_size, time_steps, num_units)
             encoded_b    shape=(batch_size, time_steps, num_units)
@@ -95,51 +94,44 @@ class SoftAlignmentLayer(object):
         return K.batch_dot(weights, sentence)
 
 
-class ComparisonLayer(object):
-    """
+class Enhancement_Layer(object):
 
-    """
+    def __init__(self):
+        pass
 
-    def __init__(self, words, hidden_units, l2_weight_decay=0.0, dropout=0.0):
-        self.words = words
+    def __call__(self, encode, align):
+        difference = encode - align
+        multiplication = encode * align
+        return merge([encode, align, difference, multiplication], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
 
+
+class Composition_Layer(object):
+
+    def __init__(self, hidden_units, max_length, dropout=0.5):
         self.model = Sequential()
-        self.model.add(Dropout(dropout, input_shape=(hidden_units * 2,)))
-        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='compare1'))
-        self.model.add(Activation('relu'))
-        self.model.add(Dropout(dropout))
-        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='compare2'))
-        self.model.add(Activation('relu'))
-        self.model = TimeDistributed(self.model)  # Apply comparison for each timestep
+        self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout=dropout, recurrent_dropout=dropout), input_shape=(max_length, 4 * hidden_units)))
+        self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', kernel_initializer='he_normal')))
+        self.model.add(TimeDistributed(Dropout(dropout)))
 
-    def __call__(self, sent, align, **kwargs):
-        result = self.model(merge([sent, align], mode='concat'))  # Shape: (batch, max_length, 2 * hidden_units)
-        avged = GlobalAveragePooling1D()(result)
-        maxed = GlobalMaxPooling1D()(result)
-        merged = merge([avged, maxed], mode='sum')
-        result = BatchNormalization()(merged)
-
-        return result
+    def __call__(self, _input):
+        return self.model(_input)
 
 
-class AggregationLayer(object):
-    """
-    Concatenate two sets of comparison vectors and aggregate over each set by summation
-    y = H([v1, v2])
-    """
+class Pooling_Layer(object):
 
-    def __init__(self, hidden_units, output_units, dropout=0.0, l2_weight_decay=0.0):
-        # Define H function
+    def __init__(self, hidden_units, output_units, dropout=0.5, l2_weight_decay=0.0):
         self.model = Sequential()
-        self.model.add(Dropout(dropout, input_shape=(hidden_units * 2,)))
-        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay)))
-        self.model.add(Activation('relu'))
-
-        self.model.add(Dropout(dropout))
+        self.model.add(Dropout(dropout, input_shape=(hidden_units * 4,)))
         self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay)))
         self.model.add(Activation('relu'))
 
         self.model.add(Dense(output_units, activation='softmax', kernel_initializer='zero', kernel_regularizer=regularizers.l2(l2_weight_decay)))
 
-    def __call__(self, feats1, feats2):
-        return self.model(merge([feats1, feats2], mode='concat'))
+    def __call__(self, a, b):
+        a_max = GlobalMaxPooling1D()(a)
+        a_avg = GlobalAveragePooling1D(a)
+
+        b_max = GlobalMaxPooling1D()(b)
+        b_avg = GlobalAveragePooling1D(b)
+
+        return self.model(merge([a_avg, a_max, b_avg, b_max], mode='concat'))   # shape=(batch_size, 4 * units)
