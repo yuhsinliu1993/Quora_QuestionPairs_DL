@@ -1,4 +1,5 @@
 import keras.backend as K
+from keras.engine.topology import Layer
 from keras.layers import Lambda, Activation, Dropout, Embedding, SpatialDropout1D, Dense, merge
 from keras.layers import TimeDistributed  # This applies the model to every timestep in the input sequences
 from keras.layers import Bidirectional, LSTM
@@ -63,46 +64,62 @@ class BiLSTM_Layer(object):
         return self.model(embedded_words)
 
 
-class SoftAlignmentLayer(object):
+def attention(encoded):
+    """
+    INPUTS:
+        encoded_a    shape=(batch_size, time_steps, num_units)
+        encoded_b    shape=(batch_size, time_steps, num_units)
+    """
 
-    def __init__(self, max_length):
-        self.max_length = max_length
-
-    def __call__(self, encoded_a, encoded_b):
-        attention = self._get_attend(encoded_a, encoded_b)
-
-        align_alpha = self._attention_softmax3d(attention, encoded_b)
-        align_beta = self._attention_softmax3d(attention, encoded_a)
-
-        return align_alpha, align_beta
-
-    def _get_attend(self, encoded_a, encoded_b):
-        """
-        INPUTS:
-            encoded_a    shape=(batch_size, time_steps, num_units)
-            encoded_b    shape=(batch_size, time_steps, num_units)
-        """
-        weights = K.batch_dot(x=encoded_a, y=K.permute_dimensions(encoded_b, pattern=(0, 2, 1)))
-        return K.permute_dimensions(weights, (0, 2, 1))
-
-    def _attention_softmax3d(self, attention, sentence):
-        # 3D softmax: calculate the subphrase in the sentence through attention
-        exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
-        summation = K.sum(exp, axis=-1, keepdims=True)
-        weights = exp / summation
-
-        return K.batch_dot(weights, sentence)
+    weights = K.batch_dot(x=encoded[0], y=K.permute_dimensions(encoded[1], pattern=(0, 2, 1)))
+    return K.permute_dimensions(weights, (0, 2, 1))
 
 
-class Enhancement_Layer(object):
+def attention_output(encoded):
+    input_shape = encoded[0]
+    embed_size = input_shape[1]
+    return (input_shape[0], embed_size, embed_size)
 
-    def __init__(self):
-        pass
 
-    def __call__(self, encode, align):
-        difference = encode - align
-        multiplication = encode * align
-        return merge([encode, align, difference, multiplication], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
+def attention_softmax3d(x):
+    attention = x[0]
+    sentence = x[1]
+
+    # 3D softmax: calculate the subphrase in the sentence through attention
+    exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
+    summation = K.sum(exp, axis=-1, keepdims=True)
+    weights = exp / summation
+
+    return K.batch_dot(weights, sentence)
+
+
+def attention_softmax3d_output(x):
+    attention_shape = x[0]
+    sentence_shape = x[1]
+
+    return (attention_shape[0], attention_shape[1], sentence_shape[2])
+
+
+def substract(x):
+    encode = x[0]
+    align = x[1]
+
+    return encode - align
+
+
+def substract_output(x):
+    return x[0]
+
+
+def multiply(x):
+    encode = x[0]
+    align = x[1]
+
+    return encode * align
+
+
+def multiply_output(x):
+    return x[0]
 
 
 class Composition_Layer(object):
@@ -129,9 +146,9 @@ class Pooling_Layer(object):
 
     def __call__(self, a, b):
         a_max = GlobalMaxPooling1D()(a)
-        a_avg = GlobalAveragePooling1D(a)
+        a_avg = GlobalAveragePooling1D()(a)
 
         b_max = GlobalMaxPooling1D()(b)
-        b_avg = GlobalAveragePooling1D(b)
+        b_avg = GlobalAveragePooling1D()(b)
 
         return self.model(merge([a_avg, a_max, b_avg, b_max], mode='concat'))   # shape=(batch_size, 4 * units)

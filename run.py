@@ -8,9 +8,9 @@ import argparse
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
 from input_handler import get_input_from_csv
 
-from models import EmbeddingLayer, BiLSTM_Layer, SoftAlignmentLayer, Enhancement_Layer, Composition_Layer, Pooling_Layer
+from models import EmbeddingLayer, BiLSTM_Layer, Composition_Layer, Pooling_Layer, attention, attention_output, attention_softmax3d, attention_softmax3d_output, substract, substract_output, multiply, multiply_output
 
-from keras.layers import Input
+from keras.layers import Input, Lambda, merge
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint
@@ -38,22 +38,32 @@ def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob,
     encoded_a = BiLSTM_Layer(max_length, hidden_unit)(embedded_a)
     encoded_b = BiLSTM_Layer(max_length, hidden_unit)(embedded_b)
 
+    # ------- Attention Layer -------
+    attention_ab = Lambda(attention, attention_output, name='attention')([encoded_a, encoded_b])
+
     # ------- Soft-Alignment Layer -------
     # Modeling local inference needs to employ some forms of hard or soft alignment to associate the relevant
     # sub-components between a premise and a hypothesis
-    # Using inter-sentence “alignment” (or attention) to softly align each word to the content of hypothesis (or premise)
-    align_alpha, align_beta = SoftAlignmentLayer(max_length)(encoded_a, encoded_b)
+    # Using inter-sentence "alignment" (or attention) to softly align each word to the content of hypothesis (or premise)
+    align_alpha = Lambda(attention_softmax3d, attention_softmax3d_output, name='soft_alignment_a')([attention_ab, encoded_b])
+    align_beta = Lambda(attention_softmax3d, attention_softmax3d_output, name='soft_alignment_b')([attention_ab, encoded_a])
 
     # ------- Enhancement Layer -------
     # Compute the difference and the element-wise product for the tuple < encoded_a, align_a > and < encoded_b, align_b >
     # This operation could help sharpen local inference information between elements in the tuples and capture
     # inference relationships such as contradiction.
-    enhanced_a = Enhancement_Layer()(encoded_a, align_alpha)
-    enhanced_b = Enhancement_Layer()(encoded_b, align_beta)
+    sub_a = Lambda(substract, substract_output, name='substract_a')([encoded_a, align_alpha])
+    mul_a = Lambda(multiply, multiply_output, name='multiply_a')([encoded_a, align_alpha])
+
+    sub_b = Lambda(substract, substract_output, name='substract_b')([encoded_b, align_beta])
+    mul_b = Lambda(multiply, multiply_output, name='multiply_b')([encoded_b, align_beta])
+
+    m_a = merge([encoded_a, align_alpha, sub_a, mul_a], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
+    m_b = merge([encoded_b, align_beta, sub_b, mul_b], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
 
     # ------- Composition Layer -------
-    comp_a = Composition_Layer(hidden_unit, max_length)(enhanced_a)
-    comp_b = Composition_Layer(hidden_unit, max_length)(enhanced_b)
+    comp_a = Composition_Layer(hidden_unit, max_length)(m_a)
+    comp_b = Composition_Layer(hidden_unit, max_length)(m_b)
 
     # ------- Pooling Layer -------
     preds = Pooling_Layer(hidden_unit, n_classes, dropout=0.2, l2_weight_decay=1e-4)(comp_a, comp_b)
@@ -97,11 +107,14 @@ def do_eval(test_data):
     # print("[*] ACCURACY OF TEST DATA: %.4f" % accuracy)
 
 
-def train(input_file, batch_size, n_epochs, save_dir=None):
+def train(train_data, val_data, batch_size, n_epochs, save_dir=None):
     # Stage 1: Read training data (csv) && Preprocessing them
-    question_1, question_2, labels = get_input_from_csv(input_file)
+    tf.logging.info('Loading training and validataion data ...')
+    train_question_1, train_question_2, train_labels = get_input_from_csv(train_data)
+    # val_question_1, val_question_2, val_labels = get_input_from_csv(val_data)
 
     # Stage 2: Load Pre-trained embedding matrix (Using GLOVE here)
+    tf.logging.info('Loading pre-trained embedding matrix ...')
     if FLAGS.best_glove:
         import en_core_web_md
         nlp = en_core_web_md.load()  # load best-matching version for Glove
@@ -110,23 +123,32 @@ def train(input_file, batch_size, n_epochs, save_dir=None):
     embedding_matrix = load_glove_embeddings(nlp.vocab, n_unknown=FLAGS.num_unknown)  # shape=(1071074, 300)
 
     # Stage 3: Build Model
+    tf.logging.info('Build model ...')
     load_pretrained_model = True if FLAGS.load_model is not None else False
     model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=load_pretrained_model)
 
     # Stage 4: Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
-    q1_train, q2_train = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
-    labels = to_categorical(np.asarray(labels, dtype='int32'))
+    tf.logging.info('Converting questions into ids ...')
+    q1_train, q2_train = convert_questions_to_word_ids(train_question_1, train_question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
+    train_labels = to_categorical(np.asarray(train_labels, dtype='int32'))
+
+    # q1_val, q2_val = convert_questions_to_word_ids(val_question_1, val_question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
+    # val_labels = to_categorical(np.asarray(val_labels, dtype='int32'))
 
     # Stage 5: Training
+    tf.logging.info('Start training ...')
+
     save_dir = save_dir if save_dir is not None else 'checkpoints'
     filepath = os.path.join(save_dir, "weights-{epoch:02d}-{val_acc:.2f}.hdf5")
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+
     model.fit(
         x=[q1_train, q2_train],
-        y=labels,
+        y=train_labels,
         batch_size=batch_size,
         epochs=n_epochs,
-        validation_split=0.33,
+        # validation_data=([q1_val, q2_val], val_labels),
+        validation_split=0.2,
         callbacks=[checkpoint],
         shuffle=True,
         verbose=FLAGS.verbose
@@ -135,7 +157,7 @@ def train(input_file, batch_size, n_epochs, save_dir=None):
 
 def run(_):
     if FLAGS.mode == 'train':
-        train(FLAGS.input_data, FLAGS.batch_size, FLAGS.num_epochs)
+        train(FLAGS.input_data, FLAGS.val_data, FLAGS.batch_size, FLAGS.num_epochs)
     elif FLAGS.mode == 'eval':
         do_eval(FLAGS.test_data)
     elif FLAGS.mode == 'predict':
@@ -179,13 +201,19 @@ if __name__ == '__main__':
     parser.add_argument(
         '--input_data',
         type=str,
-        default="./data/train.csv",
+        default="./data/processed_data/train_split.csv",
         help='Specify the location of input data',
     )
     parser.add_argument(
         '--test_data',
         type=str,
-        default="./data/test.csv",
+        default="./data/processed_data/test_final.csv",
+        help='Specify the location of test data',
+    )
+    parser.add_argument(
+        '--val_data',
+        type=str,
+        default="./data/processed_data/val_split.csv",
         help='Specify the location of test data',
     )
     parser.add_argument(
@@ -219,12 +247,6 @@ if __name__ == '__main__':
         help='Specify the rate (between 0 and 1) of the units that will keep during training'
     )
     parser.add_argument(
-        '--mode',
-        type=str,
-        help='Specify mode: train or eval or predict',
-        required=True
-    )
-    parser.add_argument(
         '--best_glove',
         action='store_true',
         help='Glove: using light version or best-matching version',
@@ -245,6 +267,12 @@ if __name__ == '__main__':
         '--load_model',
         type=str,
         help='Locate the path of the model',
+    )
+    parser.add_argument(
+        '--mode',
+        type=str,
+        help='Specify mode: train or eval or predict',
+        required=True
     )
 
     FLAGS, unparsed = parser.parse_known_args()

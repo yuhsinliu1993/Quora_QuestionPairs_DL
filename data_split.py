@@ -27,7 +27,7 @@ def main():
 
     with open(config.dataset_input_path) as f:
         reader = csv.reader(f)
-        csv_rows = list(reader)
+        csv_rows = list(reader)[1:]
 
     # For reproducibility
     random.seed(0)
