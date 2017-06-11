@@ -72,13 +72,14 @@ class BiRNN_EncodingLayer(object):
 
 
 class AttentionLayer(object):
+    """
+    A feedforwad neutal network to calculate "unnormalized attention weights"
+
+    Use BiLSTM can achieve better performance
+    """
 
     def __init__(self, max_length, hidden_units, dropout=0.0, l2_weight_decay=0.0, activation='relu'):
         self.max_length = max_length
-
-        """
-        F function => attention = transpose of F(a) * F(b)
-        """
         self.model = Sequential()
         self.model.add(Dropout(dropout, input_shape=(hidden_units,)))
         self.model.add(Dense(hidden_units, activation='relu', kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='attend1'))
@@ -87,10 +88,13 @@ class AttentionLayer(object):
         self.model = TimeDistributed(self.model)  # Apply attention for each timestep
 
     def __call__(self, sent1, sent2):
+        """
+        Calculate: transpose of F(a) * F(b)
+
+        INPUTS:
+            sent1, sent2: can be word embedded vectors or BiLSTM encoded vectors
+        """
         def _outer(AB):
-            """
-            Calculate unnormalized attention weights
-            """
             energy = K.batch_dot(x=AB[1], y=K.permute_dimensions(AB[0], pattern=(0, 2, 1)))
             return K.permute_dimensions(energy, (0, 2, 1))
 
@@ -117,7 +121,7 @@ class SoftAlignmentLayer(object):
             # 3D softmax - calculate the subphrase in the sentence through attention
             exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
             summation = K.sum(exp, axis=-1, keepdims=True)
-            weights = exp / summation  # (512, 512)
+            weights = exp / summation
             sub_phrase_in_sentence = K.batch_dot(weights, sentence)
 
             return sub_phrase_in_sentence
