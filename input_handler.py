@@ -13,6 +13,5 @@ def get_input_from_csv(file_path):
                 question_1.append(row['question1'].decode('utf-8', 'ignore'))
                 question_2.append(row['question2'].decode('utf-8', 'ignore'))
                 labels.append(row['is_duplicate'])
-                if row['is_duplicate']
 
     return question_1, question_2, labels
