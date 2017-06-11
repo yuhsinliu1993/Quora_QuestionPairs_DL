@@ -5,7 +5,7 @@ import sys
 import os
 import argparse
 
-from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids, get_cleaned_text
+from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
 from input_handler import get_input_from_csv
 
 from models import EmbeddingLayer, BiLSTM_Layer, SoftAlignmentLayer, Enhancement_Layer, Composition_Layer, Pooling_Layer
@@ -100,8 +100,6 @@ def do_eval(test_data):
 def train(input_file, batch_size, n_epochs, save_dir=None):
     # Stage 1: Read training data (csv) && Preprocessing them
     question_1, question_2, labels = get_input_from_csv(input_file)
-    question_1 = get_cleaned_text(question_1)
-    question_2 = get_cleaned_text(question_2)
 
     # Stage 2: Load Pre-trained embedding matrix (Using GLOVE here)
     if FLAGS.best_glove:

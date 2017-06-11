@@ -25,7 +25,7 @@ def load_glove_embeddings(vocab, n_unknown=100):
     return matrix
 
 
-def _get_word_ids(docs, rnn_encode=False, tree_truncate=False, max_length=100, nr_unk=100):
+def _get_word_ids(docs, rnn_encode=True, tree_truncate=False, max_length=100, nr_unk=100):
     Xs = np.zeros((len(docs), max_length), dtype='int32')
 
     for i, doc in enumerate(docs):
@@ -63,7 +63,6 @@ def convert_questions_to_word_ids(question_1, question_2, nlp, max_length, n_thr
     for texts in (question_1, question_2):
         Xs.append(_get_word_ids(list(nlp.pipe(texts, n_threads=n_threads, batch_size=batch_size)),
                                 max_length=max_length,
-                                rnn_encode=encode,
                                 tree_truncate=tree_truncate))
 
     return Xs[0], Xs[1]
