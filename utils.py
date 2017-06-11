@@ -58,7 +58,7 @@ def _get_word_ids(docs, rnn_encode=False, tree_truncate=False, max_length=100, n
     return Xs
 
 
-def convert_questions_to_word_ids(question_1, question_2, nlp, max_length, n_threads=10, batch_size=128, encode=False, tree_truncate=False):
+def convert_questions_to_word_ids(question_1, question_2, nlp, max_length, n_threads=10, batch_size=128, tree_truncate=False):
     Xs = []
     for texts in (question_1, question_2):
         Xs.append(_get_word_ids(list(nlp.pipe(texts, n_threads=n_threads, batch_size=batch_size)),

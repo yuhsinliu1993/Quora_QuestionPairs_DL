@@ -8,7 +8,7 @@ import argparse
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids, get_cleaned_text
 from input_handler import get_input_from_csv
 
-from models import EmbeddingLayer, BiRNN_EncodingLayer, AttentionLayer, SoftAlignmentLayer, ComparisonLayer, AggregationLayer
+from models import EmbeddingLayer, BiLSTM_Layer, SoftAlignmentLayer, ComparisonLayer, AggregationLayer
 
 from keras.layers import Input
 from keras.models import Model
@@ -21,33 +21,30 @@ FLAGS = None
 
 
 def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob, load_pretrained_model=False):
-    """
-    1. Get embedded vectors
-    2. Attention
-    3. Comparison
-    4. Aggregation
-    """
     vocab_size, embedding_size = embedding_matrix.shape
     dropout_rate = 1 - keep_prob
 
-    a = Input(shape=(max_length, ), dtype='int32', name='words_1')
-    b = Input(shape=(max_length, ), dtype='int32', name='words_2')
+    a = Input(shape=(max_length, ), dtype='int32', name='words_1')  # For "premise"
+    b = Input(shape=(max_length, ), dtype='int32', name='words_2')  # For "hypothesis"
 
+    # ------- Embedding Layer -------
+    # Using "Glove" pre-trained embedding matrix as our initial weights
     embedding_layer = EmbeddingLayer(vocab_size, embedding_size, max_length, hidden_unit, init_weights=embedding_matrix, dropout=dropout_rate, nr_tune=5000)
     embedded_a = embedding_layer(a)
     embedded_b = embedding_layer(b)
 
-    if FLAGS.encode:
-        encoded_a = BiRNN_EncodingLayer(max_length, hidden_unit)(embedded_a)
-        encoded_b = BiRNN_EncodingLayer(max_length, hidden_unit)(embedded_b)
-        attention = AttentionLayer(max_length, hidden_unit, dropout=dropout_rate)(encoded_a, encoded_b)
-    else:
-        attention = AttentionLayer(max_length, hidden_unit, dropout=dropout_rate)(embedded_a, embedded_b)
+    # ------- BiLSTM Layer -------
+    # BiLSTM learns to represent a word and its context
+    encoded_a = BiLSTM_Layer(max_length, hidden_unit)(embedded_a)
+    encoded_b = BiLSTM_Layer(max_length, hidden_unit)(embedded_b)
 
-    align_layer = SoftAlignmentLayer(max_length, hidden_unit)
-    align_beta = align_layer(embedded_b, attention)                   # alignment for sentence a
-    align_alpha = align_layer(embedded_a, attention, transpose=True)  # alignment for sentence b
+    # ------- Soft-Alignment Layer -------
+    # Modeling local inference needs to employ some forms of hard or soft align- ment to associate the relevant
+    # sub-components between a premise and a hypothesis
+    # Using inter-sentence “alignment” (or attention) to softly align each word to the content of hypothesis (or premise)
+    align_alpha, align_beta = SoftAlignmentLayer(max_length)(encoded_a, encoded_b)
 
+    # ------- Comparison Layer -------
     comp_layer = ComparisonLayer(max_length, hidden_unit, dropout=dropout_rate)
     comp_1 = comp_layer(embedded_a, align_beta)
     comp_2 = comp_layer(embedded_b, align_alpha)
@@ -86,7 +83,7 @@ def do_eval(test_data):
     model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=True)
 
     # Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
-    q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
+    q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
     accuracy = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
@@ -112,7 +109,7 @@ def train(input_file, batch_size, n_epochs, save_dir=None):
     model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=load_pretrained_model)
 
     # Stage 4: Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
-    q1_train, q2_train = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, encode=FLAGS.encode, tree_truncate=FLAGS.tree_truncate)
+    q1_train, q2_train = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
     # Stage 5: Training
@@ -226,12 +223,6 @@ if __name__ == '__main__':
         '--best_glove',
         action='store_true',
         help='Glove: using light version or best-matching version',
-    )
-    parser.add_argument(
-        '--encode',
-        action='store_true',
-        help='If encode is assigned, sentence will pass through BiRNN-Encoding Layer',
-        default=False
     )
     parser.add_argument(
         '--tree_truncate',

@@ -1,8 +1,8 @@
 import keras.backend as K
 from keras.layers import Lambda, Activation, Dropout, Embedding, SpatialDropout1D, Dense, merge
 from keras.layers import TimeDistributed  # This applies the model to every timestep in the input sequences
-from keras.layers import Bidirectional, GRU, LSTM
-from keras.layers.advanced_activations import ELU
+from keras.layers import Bidirectional, LSTM
+# from keras.layers.advanced_activations import ELU
 from keras.models import Sequential
 from keras import regularizers
 from keras.layers.normalization import BatchNormalization
@@ -36,30 +36,22 @@ class EmbeddingLayer(object):
 
         self.mod_ids = Lambda(lambda sent: sent % (nr_tune - 1) + 1, output_shape=(self.max_length,))
 
+        # Project the embedding vectors to lower dimensionality
         self.project = TimeDistributed(Dense(output_units, use_bias=False, name='project'))
 
     def __call__(self, sentence):
-
-        def get_output_shape(shapes):
-            print(shapes)
-
-            return shapes[0]
-
         mod_sent = self.mod_ids(sentence)
 
-        # SpatialDropout1D drops entire 1D feature maps instead of individual elements
-        tuning = SpatialDropout1D(self.dropout)(self.tune(mod_sent))
+        tuning = SpatialDropout1D(self.dropout)(self.tune(mod_sent))  # SpatialDropout1D drops entire 1D feature maps instead of individual elements
+        projected = self.project(self.embed(sentence))
 
-        # tuning = merge([tuning, mod_sent],
-        #    mode=lambda AB: AB[0] * (K.clip(K.cast(AB[1], 'float32'), 0, 1)),
-        #    output_shape=(self.max_length, self.output_units))
-        pretrained = self.project(self.embed(sentence))
-        vectors = merge([pretrained, tuning], mode='sum')
-
-        return vectors
+        return merge([projected, tuning], mode='sum')
 
 
-class BiRNN_EncodingLayer(object):
+class BiLSTM_Layer(object):
+    """
+    Encode the embedded words by using BiLSTM
+    """
 
     def __init__(self, max_length, hidden_units, dropout=0.0):
         self.model = Sequential()
@@ -71,69 +63,41 @@ class BiRNN_EncodingLayer(object):
         return self.model(embedded_words)
 
 
-class AttentionLayer(object):
-    """
-    A feedforwad neutal network to calculate "unnormalized attention weights"
-
-    Use BiLSTM can achieve better performance
-    """
-
-    def __init__(self, max_length, hidden_units, dropout=0.0, l2_weight_decay=0.0, activation='relu'):
-        self.max_length = max_length
-        self.model = Sequential()
-        self.model.add(Dropout(dropout, input_shape=(hidden_units,)))
-        self.model.add(Dense(hidden_units, activation='relu', kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), name='attend1'))
-        self.model.add(Dropout(dropout))
-        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), activation='relu', name='attend2'))
-        self.model = TimeDistributed(self.model)  # Apply attention for each timestep
-
-    def __call__(self, sent1, sent2):
-        """
-        Calculate: transpose of F(a) * F(b)
-
-        INPUTS:
-            sent1, sent2: can be word embedded vectors or BiLSTM encoded vectors
-        """
-        def _outer(AB):
-            energy = K.batch_dot(x=AB[1], y=K.permute_dimensions(AB[0], pattern=(0, 2, 1)))
-            return K.permute_dimensions(energy, (0, 2, 1))
-
-        return merge(inputs=[self.model(sent1), self.model(sent2)],
-                     mode=_outer,
-                     output_shape=(self.max_length, self.max_length))
-
-
 class SoftAlignmentLayer(object):
 
-    def __init__(self, max_length, hidden_units):
+    def __init__(self, max_length):
         self.max_length = max_length
-        self.hidden_units = hidden_units
 
-    def __call__(self, sentence, attention, transpose=False):
+    def __call__(self, encoded_a, encoded_b):
+        attention = self._get_attend(encoded_a, encoded_b)
 
-        def _normalize_attention(attention_and_sent):
-            attention = attention_and_sent[0]   # attention matrix   shape=(?, max_length, max_length)
-            sentence = attention_and_sent[1]    # sentence that wants to be aligned   shape=(?, max_length, embedding_size)
+        align_alpha = self._attention_softmax3d(attention, encoded_b)
+        align_beta = self._attention_softmax3d(attention, encoded_a)
 
-            if transpose:
-                attention = K.permute_dimensions(attention, (0, 2, 1))
+        return align_alpha, align_beta
 
-            # 3D softmax - calculate the subphrase in the sentence through attention
-            exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
-            summation = K.sum(exp, axis=-1, keepdims=True)
-            weights = exp / summation
-            sub_phrase_in_sentence = K.batch_dot(weights, sentence)
+    def _get_attend(self, encoded_a, encoded_b):
+        """
+        Compute the attention weights as the similarity of a hidden state tuple <a ̄i, b ̄j> between a premise and a hypothesis
+        INPUTS:
+            encoded_a    shape=(batch_size, time_steps, num_units)
+            encoded_b    shape=(batch_size, time_steps, num_units)
+        """
+        weights = K.batch_dot(x=encoded_a, y=K.permute_dimensions(encoded_b, pattern=(0, 2, 1)))
+        return K.permute_dimensions(weights, (0, 2, 1))
 
-            return sub_phrase_in_sentence
+    def _attention_softmax3d(self, attention, sentence):
+        # 3D softmax: calculate the subphrase in the sentence through attention
+        exp = K.exp(attention - K.max(attention, axis=-1, keepdims=True))
+        summation = K.sum(exp, axis=-1, keepdims=True)
+        weights = exp / summation
 
-        return merge([attention, sentence],
-                     mode=_normalize_attention,
-                     output_shape=(self.max_length, self.hidden_units))
+        return K.batch_dot(weights, sentence)
 
 
 class ComparisonLayer(object):
     """
-    Separately compare the aligned phrases using a function "G"
+
     """
 
     def __init__(self, words, hidden_units, l2_weight_decay=0.0, dropout=0.0):
