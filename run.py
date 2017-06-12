@@ -5,78 +5,15 @@ import sys
 import os
 import argparse
 
+from keras.callbacks import ModelCheckpoint
+
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
 from input_handler import get_input_from_csv
-
-from models import EmbeddingLayer, BiLSTM_Layer, Composition_Layer, Pooling_Layer, attention, attention_output, attention_softmax3d, attention_softmax3d_output, substract, substract_output, multiply, multiply_output
-
-from keras.layers import Input, Lambda, merge
-from keras.models import Model
-from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint
+from ESIM import ESIM
 
 
 tf.logging.set_verbosity(tf.logging.INFO)
 FLAGS = None
-
-
-def build_model(embedding_matrix, max_length, hidden_unit, n_classes, keep_prob, load_pretrained_model=False):
-    vocab_size, embedding_size = embedding_matrix.shape
-    dropout_rate = 1 - keep_prob
-
-    a = Input(shape=(max_length, ), dtype='int32', name='words_1')  # For "premise"
-    b = Input(shape=(max_length, ), dtype='int32', name='words_2')  # For "hypothesis"
-
-    # ------- Embedding Layer -------
-    # Using "Glove" pre-trained embedding matrix as our initial weights
-    embedding_layer = EmbeddingLayer(vocab_size, embedding_size, max_length, hidden_unit, init_weights=embedding_matrix, dropout=dropout_rate, nr_tune=5000)
-    embedded_a = embedding_layer(a)
-    embedded_b = embedding_layer(b)
-
-    # ------- BiLSTM Layer -------
-    # BiLSTM learns to represent a word and its context
-    encoded_a = BiLSTM_Layer(max_length, hidden_unit)(embedded_a)
-    encoded_b = BiLSTM_Layer(max_length, hidden_unit)(embedded_b)
-
-    # ------- Attention Layer -------
-    attention_ab = Lambda(attention, attention_output, name='attention')([encoded_a, encoded_b])
-
-    # ------- Soft-Alignment Layer -------
-    # Modeling local inference needs to employ some forms of hard or soft alignment to associate the relevant
-    # sub-components between a premise and a hypothesis
-    # Using inter-sentence "alignment" (or attention) to softly align each word to the content of hypothesis (or premise)
-    align_alpha = Lambda(attention_softmax3d, attention_softmax3d_output, name='soft_alignment_a')([attention_ab, encoded_b])
-    align_beta = Lambda(attention_softmax3d, attention_softmax3d_output, name='soft_alignment_b')([attention_ab, encoded_a])
-
-    # ------- Enhancement Layer -------
-    # Compute the difference and the element-wise product for the tuple < encoded_a, align_a > and < encoded_b, align_b >
-    # This operation could help sharpen local inference information between elements in the tuples and capture
-    # inference relationships such as contradiction.
-    sub_a = Lambda(substract, substract_output, name='substract_a')([encoded_a, align_alpha])
-    mul_a = Lambda(multiply, multiply_output, name='multiply_a')([encoded_a, align_alpha])
-
-    sub_b = Lambda(substract, substract_output, name='substract_b')([encoded_b, align_beta])
-    mul_b = Lambda(multiply, multiply_output, name='multiply_b')([encoded_b, align_beta])
-
-    m_a = merge([encoded_a, align_alpha, sub_a, mul_a], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
-    m_b = merge([encoded_b, align_beta, sub_b, mul_b], mode='concat')  # shape=(batch_size, time-steps, 4 * units)
-
-    # ------- Composition Layer -------
-    comp_a = Composition_Layer(hidden_unit, max_length)(m_a)
-    comp_b = Composition_Layer(hidden_unit, max_length)(m_b)
-
-    # ------- Pooling Layer -------
-    preds = Pooling_Layer(hidden_unit, n_classes, dropout=0.2, l2_weight_decay=1e-4)(comp_a, comp_b)
-
-    model = Model(inputs=[a, b], outputs=[preds])
-    model.compile(optimizer=Adam(lr=FLAGS.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
-
-    if load_pretrained_model:
-        if FLAGS.load_model is None:
-            raise ValueError("You need to specify the model location by --load_model=[location]")
-        model.load_weights(FLAGS.load_model)
-
-    return model
 
 
 def do_predict(X=None):
@@ -97,7 +34,14 @@ def do_eval(test_data):
     else:
         nlp = spacy.load('en')
     embedding_matrix = load_glove_embeddings(nlp.vocab, n_unknown=FLAGS.num_unknown)  # shape=(1071074, 300)
-    model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=True)
+
+    tf.logging.info('Build model ...')
+    esim = ESIM(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, FLAGS.learning_rate)
+
+    if FLAGS.load_model:
+        model = esim.build_model(FLAGS.load_model)
+    else:
+        raise ValueError("You need to specify the model location by --load_model=[location]")
 
     # Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
     q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
@@ -124,8 +68,12 @@ def train(train_data, val_data, batch_size, n_epochs, save_dir=None):
 
     # Stage 3: Build Model
     tf.logging.info('Build model ...')
-    load_pretrained_model = True if FLAGS.load_model is not None else False
-    model = build_model(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, load_pretrained_model=load_pretrained_model)
+    esim = ESIM(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, FLAGS.learning_rate)
+
+    if FLAGS.load_model:
+        model = esim.build_model(FLAGS.load_model)
+    else:
+        model = esim.build_model()
 
     # Stage 4: Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
     tf.logging.info('Converting questions into ids ...')

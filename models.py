@@ -1,5 +1,4 @@
 import keras.backend as K
-from keras.engine.topology import Layer
 from keras.layers import Lambda, Activation, Dropout, Embedding, SpatialDropout1D, Dense, merge
 from keras.layers import TimeDistributed  # This applies the model to every timestep in the input sequences
 from keras.layers import Bidirectional, LSTM
