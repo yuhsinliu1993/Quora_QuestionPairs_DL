@@ -58,6 +58,7 @@ class BiLSTM_Layer(object):
         self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout=dropout, recurrent_dropout=dropout), input_shape=(max_length, hidden_units)))  # return_sequences: return the last output in the output sequence, or the full sequence.
         self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', kernel_initializer='he_normal')))
         self.model.add(TimeDistributed(Dropout(dropout)))
+        self.model.add(TimeDistributed(BatchNormalization()))
 
     def __call__(self, embedded_words):
         return self.model(embedded_words)
@@ -128,6 +129,7 @@ class Composition_Layer(object):
         self.model.add(Bidirectional(LSTM(hidden_units, return_sequences=True, dropout=dropout, recurrent_dropout=dropout), input_shape=(max_length, 4 * hidden_units)))
         self.model.add(TimeDistributed(Dense(hidden_units, activation='relu', kernel_initializer='he_normal')))
         self.model.add(TimeDistributed(Dropout(dropout)))
+        self.model.add(TimeDistributed(BatchNormalization()))
 
     def __call__(self, _input):
         return self.model(_input)
@@ -137,9 +139,10 @@ class Pooling_Layer(object):
 
     def __init__(self, hidden_units, output_units, dropout=0.5, l2_weight_decay=0.0):
         self.model = Sequential()
-        self.model.add(Dropout(dropout, input_shape=(hidden_units * 4,)))
-        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay)))
+        self.model.add(Dense(hidden_units, kernel_initializer='he_normal', kernel_regularizer=regularizers.l2(l2_weight_decay), input_shape=(hidden_units * 4,)))
         self.model.add(Activation('relu'))
+        self.model.add(Dropout(dropout))
+        self.model.add(BatchNormalization())
 
         self.model.add(Dense(output_units, activation='softmax', kernel_initializer='zero', kernel_regularizer=regularizers.l2(l2_weight_decay)))
 
