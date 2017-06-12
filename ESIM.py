@@ -1,4 +1,4 @@
-from models import EmbeddingLayer, BiLSTM_Layer, Composition_Layer, Pooling_Layer, attention, attention_output, attention_softmax3d, attention_softmax3d_output, substract, substract_output, multiply, multiply_output
+from layers import EmbeddingLayer, BiLSTM_Layer, Composition_Layer, Pooling_Layer, attention, attention_output, attention_softmax3d, attention_softmax3d_output, substract, substract_output, multiply, multiply_output
 
 from keras.layers import Input, Lambda, merge
 from keras.models import Model
@@ -7,7 +7,7 @@ from keras.optimizers import Adam
 
 class ESIM:
 
-    def __init__(self, embedding_matrix, max_length, hidden_unit, n_classes, keep_prob, learning_rate=1e-4):
+    def __init__(self, embedding_matrix, max_length, hidden_unit, n_classes, keep_prob, learning_rate=1e-4, l2_weight_decay=1e-4):
         self.embedding_matrix = embedding_matrix
         self.vocab_size = embedding_matrix.shape[0]
         self.embedding_size = embedding_matrix.shape[1]
@@ -61,13 +61,13 @@ class ESIM:
         comp_b = Composition_Layer(self.hidden_unit, self.max_length)(m_b)
 
         # ------- Pooling Layer -------
-        preds = Pooling_Layer(self.hidden_unit, self.n_classes, dropout=self.dropout_rate, l2_weight_decay=1e-4)(comp_a, comp_b)
+        preds = Pooling_Layer(self.hidden_unit, self.n_classes, dropout=self.dropout_rate, l2_weight_decay=self.l2_weight_decay)(comp_a, comp_b)
 
         model = Model(inputs=[a, b], outputs=[preds])
         model.compile(optimizer=Adam(lr=self.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
         if load_model is not None:
-            print('Loading pre-trained weights ...')
+            print('Loading pre-trained weights from \'{}\'...'.format(load_model))
             model.load_weights(load_model)
 
         return model

@@ -5,23 +5,25 @@ See more infomation on [https://www.kaggle.com/c/quora-question-pairs](https://w
 Reference
 ---------
 
-1. Code is based on the paper "A decomposable attention model for natural language inference (2016)" proposed by Aparikh, Oscart, Dipanjand, Uszkoreit. See more detail on [https://arxiv.org/abs/1606.01933](https://arxiv.org/abs/1606.01933)
+1. Code is based on the paper [A decomposable attention model for natural language inference (2016)](https://arxiv.org/abs/1606.01933) proposed by Aparikh, Oscart, Dipanjand, Uszkoreit.
 
-2. "Reasoning about entailment with neural attention (2016)" proposed by Tim Rockta schel. See more detail on [https://arxiv.org/abs/1509.06664](https://arxiv.org/abs/1509.06664)
+2. [Reasoning about entailment with neural attention (2016)](https://arxiv.org/abs/1509.06664) proposed by Tim Rockta schel.
 
-3. "Neural Machine Translation by Jointly Learning to Align and Translate (2016)" proposed by Yoshua Bengio, Dzmitry Bahdanau, KyungHyun Cho. See more detail on [https://arxiv.org/abs/1409.0473](https://arxiv.org/abs/1409.0473)
+3. [Neural Machine Translation by Jointly Learning to Align and Translate (2016)](https://arxiv.org/abs/1409.0473) proposed by Yoshua Bengio, Dzmitry Bahdanau, KyungHyun Cho.
+
+4. [Enhanced LSTM for Natural Language Inference (2017)](https://arxiv.org/abs/1609.06038) proposed by Qian Chen, Xiaodan Zhu, Zhenhua Ling, Si Wei, Hui Jiang, Diana Inkpen.
 
 
 Prerequisites
 -------------
 
-- python 2.7
+- python 2.7 or 3+
 - numpy
 - [Tensorflow](https://www.tensorflow.org/)
 - [Keras](https://github.com/fchollet/keras)
 - [spaCy](https://spacy.io)
 
-Download spaCy pre-trained word2vec (Glove)
+Download spaCy pre-trained Glove embedding weights
 
     # out-of-the-box: download best-matching default model
     $ python -m spacy download en
@@ -33,9 +35,13 @@ Download spaCy pre-trained word2vec (Glove)
 Usage
 -----
 
-To train a model on default settings: (epochs: 10, embedding size: 128, hidden units: 100, learning rate: 0.001, input data: ./data/train.csv)
+To clean the inputs data, and split them into training and validation data run:
 
-    $ python run.py --mode=train --verbose
+    $ bash clean.sh
+
+To train a model on default settings: (epochs: 10, embedding size: 300, hidden units: 100, learning rate: 0.0004)
+
+    $ python run.py --mode=train --verbose --best_glove
 
 To test a model:
 
@@ -47,10 +53,11 @@ All options:
 usage: run.py [-h] [--num_epochs NUM_EPOCHS] [--batch_size BATCH_SIZE]
               [--embedding_size EMBEDDING_SIZE] [--max_length MAX_LENGTH]
               [--seed SEED] [--input_data INPUT_DATA] [--test_data TEST_DATA]
-              [--num_classes NUM_CLASSES] [--num_hidden NUM_HIDDEN]
-              [--num_unknown NUM_UNKNOWN] [--learning_rate LEARNING_RATE]
-              [--keep_prob KEEP_PROB] --mode MODE [--best_glove] [--encode]
-              [--tree_truncate] [--verbose]
+              [--val_data VAL_DATA] [--num_classes NUM_CLASSES]
+              [--num_hidden NUM_HIDDEN] [--num_unknown NUM_UNKNOWN]
+              [--learning_rate LEARNING_RATE] [--keep_prob KEEP_PROB]
+              [--best_glove] [--tree_truncate] [--verbose]
+              [--load_model LOAD_MODEL] --mode MODE
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -67,6 +74,7 @@ optional arguments:
                         Specify the location of input data
   --test_data TEST_DATA
                         Specify the location of test data
+  --val_data VAL_DATA   Specify the location of test data
   --num_classes NUM_CLASSES
                         Specify the number of classes
   --num_hidden NUM_HIDDEN
@@ -79,10 +87,10 @@ optional arguments:
   --keep_prob KEEP_PROB
                         Specify the rate (between 0 and 1) of the units that
                         will keep during training
-  --mode MODE           Specify mode: train or eval
   --best_glove          Glove: using light version or best-matching version
-  --encode              If encode is assigned, sentence will pass through
-                        BiRNN-Encoding Layer
   --tree_truncate       Specify whether do tree_truncate or not
   --verbose             Verbose on training
+  --load_model LOAD_MODEL
+                        Locate the path of the model
+  --mode MODE           Specify mode: train or eval or predict
 ```
