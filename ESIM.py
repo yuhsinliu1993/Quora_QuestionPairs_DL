@@ -64,7 +64,7 @@ class ESIM:
         preds = Pooling_Layer(self.hidden_unit, self.n_classes, dropout=self.dropout_rate, l2_weight_decay=self.l2_weight_decay)(comp_a, comp_b)
 
         model = Model(inputs=[a, b], outputs=[preds])
-        model.compile(optimizer=Adam(lr=self.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+        model.compile(optimizer=Adam(lr=self.learning_rate), loss='binary_crossentropy', metrics=['accuracy'])
 
         if load_model is not None:
             print('Loading pre-trained weights from \'{}\'...'.format(load_model))

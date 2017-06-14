@@ -1,11 +1,20 @@
 # Kaggle Competition: Quora Question Pairs Problem
 
-See more infomation on [https://www.kaggle.com/c/quora-question-pairs](https://www.kaggle.com/c/quora-question-pairs)
+Only implement on a single model - ESIM
 
-Reference
+See infomation on [https://www.kaggle.com/c/quora-question-pairs](https://www.kaggle.com/c/quora-question-pairs)
+
+Framework
 ---------
 
-1. Code is based on the paper [A decomposable attention model for natural language inference (2016)](https://arxiv.org/abs/1606.01933) proposed by Aparikh, Oscart, Dipanjand, Uszkoreit.
+![](assets/framework.png)
+
+
+
+References
+----------
+
+1. [A decomposable attention model for natural language inference (2016)](https://arxiv.org/abs/1606.01933) proposed by Aparikh, Oscart, Dipanjand, Uszkoreit.
 
 2. [Reasoning about entailment with neural attention (2016)](https://arxiv.org/abs/1509.06664) proposed by Tim Rockta schel.
 
