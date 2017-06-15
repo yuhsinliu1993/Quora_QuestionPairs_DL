@@ -16,6 +16,7 @@ class ESIM:
         self.n_classes = n_classes
         self.hidden_unit = hidden_unit
         self.learning_rate = learning_rate
+        self.l2_weight_decay = l2_weight_decay
 
     def build_model(self, load_model=None):
 
