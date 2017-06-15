@@ -5,7 +5,7 @@ import sys
 import os
 import argparse
 
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, TensorBoard
 
 from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
 from input_handler import get_input_from_csv
@@ -86,9 +86,18 @@ def train(train_data, val_data, batch_size, n_epochs, save_dir=None):
     # Stage 5: Training
     tf.logging.info('Start training ...')
 
+    callbacks = []
     save_dir = save_dir if save_dir is not None else 'checkpoints'
     filepath = os.path.join(save_dir, "weights-{epoch:02d}-{val_acc:.2f}.hdf5")
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+    callbacks.append(checkpoint)
+
+    if FLAGS.tensorboard:
+        graph_dir = os.path.join('.', 'GRAPHs')
+        if not os.path.exists(graph_dir):
+            os.makedirs(graph_dir)
+        tb = TensorBoard(log_dir=graph_dir, histogram_freq=0, write_graph=True, write_images=True)
+        callbacks.append(tb)
 
     model.fit(
         x=[q1_train, q2_train],
@@ -97,7 +106,7 @@ def train(train_data, val_data, batch_size, n_epochs, save_dir=None):
         epochs=n_epochs,
         # validation_data=([q1_val, q2_val], val_labels),
         validation_split=0.2,
-        callbacks=[checkpoint],
+        callbacks=callbacks,
         shuffle=True,
         verbose=FLAGS.verbose
     )
@@ -215,6 +224,12 @@ if __name__ == '__main__':
         '--load_model',
         type=str,
         help='Locate the path of the model',
+    )
+    parser.add_argument(
+        '--tensorboard',
+        action='store_true',
+        help='Whether use tensorboard or not',
+        default=True
     )
     parser.add_argument(
         '--mode',
