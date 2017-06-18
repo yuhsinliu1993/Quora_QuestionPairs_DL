@@ -7,8 +7,8 @@ import argparse
 
 from keras.callbacks import ModelCheckpoint, TensorBoard
 
-from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids
-from input_handler import get_input_from_csv
+from utils import load_glove_embeddings, to_categorical, convert_questions_to_word_ids, shuffle_data
+from input_handler import get_input_from_csv, get_test_from_csv
 from ESIM import ESIM
 
 
@@ -16,12 +16,55 @@ tf.logging.set_verbosity(tf.logging.INFO)
 FLAGS = None
 
 
-def do_eval_and_pred(test_data_path):
+def do_pred(test_data_path):
+    if FLAGS.load_model is None:
+        raise ValueError("You need to specify the model location by --load_model=[location]")
+
+    # Load Testing Data
+    question_1, question_2 = get_test_from_csv(test_data_path)
+
+    # Load Pre-trained Model
+    if FLAGS.best_glove:
+        import en_core_web_md
+        nlp = en_core_web_md.load()  # load best-matching version for Glove
+    else:
+        nlp = spacy.load('en')
+    embedding_matrix = load_glove_embeddings(nlp.vocab, n_unknown=FLAGS.num_unknown)  # shape=(1071074, 300)
+
+    tf.logging.info('Build model ...')
+    esim = ESIM(embedding_matrix, FLAGS.max_length, FLAGS.num_hidden, FLAGS.num_classes, FLAGS.keep_prob, FLAGS.learning_rate)
+
+    if FLAGS.load_model:
+        model = esim.build_model(FLAGS.load_model)
+    else:
+        raise ValueError("You need to specify the model location by --load_model=[location]")
+
+    # Convert the "raw data" to word-ids format && convert "labels" to one-hot vectors
+    q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
+
+    predictions = model.predict([q1_test, q2_test])
+    print("[*] Predictions Results: \n", predictions[0])
+
+    for i in range(len(q1_test)):
+        print("=============== %d Prediction ===============" % i)
+        print("Q1: %s" % question_1[i])
+        print("Q2: %s" % question_2[i])
+
+        if np.argmax(predictions[i]) == 1:
+            print("IS_DUPLICATE: YES  score: %.6f" % predictions[i][1])
+        else:
+            print("IS_DUPLICATE: NO   score: %.6f" % predictions[i][0])
+
+
+def do_eval(test_data_path, shuffle=False):
     if FLAGS.load_model is None:
         raise ValueError("You need to specify the model location by --load_model=[location]")
 
     # Load Testing Data
     question_1, question_2, labels = get_input_from_csv(test_data_path)
+
+    if shuffle:
+        question_1, question_2, labels = shuffle_data(question_1, question_2, labels)
 
     # Load Pre-trained Model
     if FLAGS.best_glove:
@@ -43,11 +86,9 @@ def do_eval_and_pred(test_data_path):
     q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
-    predictions = model.predict([q1_test, q2_test])
-    print("[*] Predictions Results: \n", predictions[0])
-
     scores = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
-    print("========================================")
+
+    print("=================== RESULTS =====================")
     print("[*] LOSS OF TEST DATA: %.4f" % scores[0])
     print("[*] ACCURACY OF TEST DATA: %.4f" % scores[1])
 
@@ -117,7 +158,9 @@ def run(_):
     if FLAGS.mode == 'train':
         train(FLAGS.input_data, FLAGS.val_data, FLAGS.batch_size, FLAGS.num_epochs)
     elif FLAGS.mode == 'eval':
-        do_eval_and_pred(FLAGS.test_data)
+        do_eval(FLAGS.input_data)
+    elif FLAGS.mode == 'pred':
+        do_pred(FLAGS.test_data)
     else:
         pass
 

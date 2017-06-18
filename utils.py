@@ -145,3 +145,17 @@ def to_categorical(y, nb_classes=None):
         Y[i, y[i]] = 1.
 
     return Y
+
+
+def shuffle_data(question_1, question_2, labels):
+    q1 = []
+    q2 = []
+    y = []
+
+    shuffle_indices = np.random.permutation(np.arange(len(question_1)))
+    for index in shuffle_indices:
+        q1.append(question_1[index])
+        q2.append(question_2[index])
+        y.append(labels[index])
+
+    return q1, q2, y
