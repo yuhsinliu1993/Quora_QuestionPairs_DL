@@ -16,16 +16,12 @@ tf.logging.set_verbosity(tf.logging.INFO)
 FLAGS = None
 
 
-def do_predict(X=None):
-    pass
-
-
-def do_eval(test_data):
+def do_eval_and_pred(test_data_path):
     if FLAGS.load_model is None:
         raise ValueError("You need to specify the model location by --load_model=[location]")
 
     # Load Testing Data
-    question_1, question_2, labels = get_input_from_csv(test_data)
+    question_1, question_2, labels = get_input_from_csv(test_data_path)
 
     # Load Pre-trained Model
     if FLAGS.best_glove:
@@ -47,8 +43,13 @@ def do_eval(test_data):
     q1_test, q2_test = convert_questions_to_word_ids(question_1, question_2, nlp, max_length=FLAGS.max_length, tree_truncate=FLAGS.tree_truncate)
     labels = to_categorical(np.asarray(labels, dtype='int32'))
 
-    accuracy = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
-    # print("[*] ACCURACY OF TEST DATA: %.4f" % accuracy)
+    predictions = model.predict([q1_test, q2_test])
+    print("[*] Predictions Results: \n", predictions[0])
+
+    scores = model.evaluate([q1_test, q2_test], labels, batch_size=FLAGS.batch_size, verbose=1)
+    print("========================================")
+    print("[*] LOSS OF TEST DATA: %.4f" % scores[0])
+    print("[*] ACCURACY OF TEST DATA: %.4f" % scores[1])
 
 
 def train(train_data, val_data, batch_size, n_epochs, save_dir=None):
@@ -116,9 +117,7 @@ def run(_):
     if FLAGS.mode == 'train':
         train(FLAGS.input_data, FLAGS.val_data, FLAGS.batch_size, FLAGS.num_epochs)
     elif FLAGS.mode == 'eval':
-        do_eval(FLAGS.test_data)
-    elif FLAGS.mode == 'predict':
-        do_predict()
+        do_eval_and_pred(FLAGS.test_data)
     else:
         pass
 
@@ -234,7 +233,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--mode',
         type=str,
-        help='Specify mode: train or eval or predict',
+        help='Specify mode: train or eval',
         required=True
     )
 
